@@ -18,8 +18,10 @@ func main() {
 	var (
 		logger = log.New().WithFields(log.Fields{"component": "main"})
 
-		retention = flag.Duration("retention", 10*24*time.Hour, "Retention duration")
-		region    = flag.String("region", "eu-central-1", "AWS region to use")
+		retention       = flag.Duration("retention", 10*24*time.Hour, "Retention duration")
+		region          = flag.String("region", "eu-central-1", "AWS region to use")
+		disablePrune    = flag.Bool("disable-prune", false, "Disable pruning of old snapshots")
+		disableSnapshot = flag.Bool("disable-snapshot", false, "Disable snapshot")
 	)
 	flag.Parse()
 
@@ -56,15 +58,19 @@ func main() {
 		}
 		logger.WithFields(log.Fields{"instance": *instance.Name}).Infof("Starting snapshot manager")
 		smgr := snapshot.NewSnapshotManager(client, *instance.Name, snapshot.WithRetention(*retention))
-		if err := smgr.Snapshot(ctx); err != nil {
-			logger.Error(err)
-		} else {
-			logger.WithFields(log.Fields{"instance": *instance.Name}).Infof("Snapshot successfull")
+		if !*disableSnapshot {
+			if err := smgr.Snapshot(ctx); err != nil {
+				logger.Error(err)
+			} else {
+				logger.WithFields(log.Fields{"instance": *instance.Name}).Infof("Snapshot successfull")
+			}
 		}
-		if err := smgr.Prune(ctx); err != nil {
-			logger.Error(err)
-		} else {
-			logger.WithFields(log.Fields{"instance": *instance.Name}).Infof("Prune done")
+		if !*disablePrune {
+			if err := smgr.Prune(ctx); err != nil {
+				logger.Error(err)
+			} else {
+				logger.WithFields(log.Fields{"instance": *instance.Name}).Infof("Prune done")
+			}
 		}
 	}
 }

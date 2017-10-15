@@ -1,0 +1,1 @@
+# lightsail-auto-snapshot

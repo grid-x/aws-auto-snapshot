@@ -1,0 +1,49 @@
+hash: d6f63d1b7c67074a98a69730e209ef3afc4942f262af3f893a069faffd4c8ad6
+updated: 2017-10-15T19:56:19.689598595+02:00
+imports:
+- name: github.com/aws/aws-sdk-go
+  version: 7cb0cfd8c7a20efc2ec149e50eb55fc770c673d8
+  subpackages:
+  - aws
+  - aws/awserr
+  - aws/awsutil
+  - aws/client
+  - aws/client/metadata
+  - aws/corehandlers
+  - aws/credentials
+  - aws/credentials/ec2rolecreds
+  - aws/credentials/endpointcreds
+  - aws/credentials/stscreds
+  - aws/defaults
+  - aws/ec2metadata
+  - aws/endpoints
+  - aws/request
+  - aws/service/lightsail
+  - aws/session
+  - aws/signer/v4
+  - internal/shareddefaults
+  - private/protocol
+  - private/protocol/json/jsonutil
+  - private/protocol/jsonrpc
+  - private/protocol/query
+  - private/protocol/query/queryutil
+  - private/protocol/rest
+  - private/protocol/xml/xmlutil
+  - service/lightsail
+  - service/sts
+- name: github.com/go-ini/ini
+  version: 5b3e00af70a9484542169a976dcab8d03e601a17
+- name: github.com/jmespath/go-jmespath
+  version: bd40a432e4c76585ef6b72d3fd96fb9b6dc7b68d
+- name: github.com/sirupsen/logrus
+  version: f006c2ac4710855cf0f916dd6b77acf6b048dc6e
+- name: golang.org/x/crypto
+  version: 9419663f5a44be8b34ca85f08abc5fe1be11f8a3
+  subpackages:
+  - ssh/terminal
+- name: golang.org/x/sys
+  version: 686000749eaec0b8855b8eef5336cf63899fe51d
+  subpackages:
+  - unix
+  - windows
+testImports: []

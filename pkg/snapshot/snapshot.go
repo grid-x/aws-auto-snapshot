@@ -106,8 +106,8 @@ func (smgr *SnapshotManager) Prune(ctx context.Context) error {
 		for _, snapshot := range resp.InstanceSnapshots {
 
 			// Only use snapshots from the current instance
-			if snapshot.InstanceFrom == nil ||
-				*snapshot.InstanceFrom != smgr.instance {
+			if snapshot.FromInstanceName == nil ||
+				*snapshot.FromInstanceName != smgr.instance {
 				continue
 			}
 			// Filter out snapshots not created by this tool
@@ -131,7 +131,7 @@ func (smgr *SnapshotManager) Prune(ctx context.Context) error {
 
 		if snapshot.CreatedAt.After(time.Now().Add(-smgr.retention)) {
 			// Snapshot is not yet old enough
-			s.logger.Debugf("Snapshot %s not old enough", *snapshot.Name)
+			smgr.logger.Debugf("Snapshot %s not old enough", *snapshot.Name)
 			continue
 		}
 		smgr.logger.Infof("Deleting snapshot %s", *snapshot.Name)

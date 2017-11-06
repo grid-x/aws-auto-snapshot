@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/lightsail"
 	log "github.com/sirupsen/logrus"
@@ -22,10 +23,29 @@ func main() {
 		region          = flag.String("region", "eu-central-1", "AWS region to use")
 		disablePrune    = flag.Bool("disable-prune", false, "Disable pruning of old snapshots")
 		disableSnapshot = flag.Bool("disable-snapshot", false, "Disable snapshot")
+
+		awsAccessKeyID     = flag.String("aws-access-key-id", "", "AWS Access Key ID to use")
+		awsSecretAccessKey = flag.String("aws-secret-access-key", "", "AWS Secret Access Key to use")
 	)
 	flag.Parse()
 
-	sess := session.New()
+	if *awsAccessKeyID == "" {
+		logger.Fatal("Missing AWS Access Key ID")
+	}
+	if *awsSecretAccessKey == "" {
+		logger.Fatal("Missing AWS Secret Access Key")
+	}
+
+	creds := credentials.NewCredentials(&credentials.StaticProvider{
+		Value: credentials.Value{
+			AccessKeyID:     *awsAccessKeyID,
+			SecretAccessKey: *awsSecretAccessKey,
+		},
+	})
+
+	sess := session.New(&aws.Config{
+		Credentials: creds,
+	})
 	client := lightsail.New(sess, aws.NewConfig().WithRegion(*region))
 
 	ctx, cancel := context.WithCancel(context.Background())

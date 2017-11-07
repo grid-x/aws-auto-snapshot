@@ -1,4 +1,4 @@
-package snapshot
+package lightsail
 
 import (
 	"context"
@@ -19,6 +19,7 @@ var (
 	defaultRetention = 10 * 24 * time.Hour
 )
 
+// SnapshotManager manages the snapshots of a single lightsail instance
 type SnapshotManager struct {
 	client   *lightsail.Lightsail
 	instance string // instance name
@@ -29,20 +30,25 @@ type SnapshotManager struct {
 	logger log.FieldLogger
 }
 
+// Opt represents Options that can be passed to the SnapshotManager
 type Opt func(*SnapshotManager)
 
+// WithRetention set the retention duration
 func WithRetention(r time.Duration) Opt {
 	return func(m *SnapshotManager) {
 		m.retention = r
 	}
 }
 
+// WithSnapshotSuffix sets the suffix of the automated snapshots
 func WithSnapshotSuffix(suf string) Opt {
 	return func(m *SnapshotManager) {
 		m.suffix = suf
 	}
 }
 
+// NewSnapshotManager creates a new SnapshotManager for an instance  given an
+// lightsail client and a set of Opts
 func NewSnapshotManager(client *lightsail.Lightsail, instance string, opts ...Opt) *SnapshotManager {
 	smgr := &SnapshotManager{
 		client:   client,
@@ -65,6 +71,8 @@ func NewSnapshotManager(client *lightsail.Lightsail, instance string, opts ...Op
 	return smgr
 }
 
+// Snapshot creates a snapshots for the Lightsail instance this SnapshotManager
+// belongs to
 func (smgr *SnapshotManager) Snapshot(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
@@ -86,6 +94,8 @@ func (smgr *SnapshotManager) Snapshot(ctx context.Context) error {
 	return err
 }
 
+// Prune deletes old snapshots of the lightsail instance belonging to the
+// SnapshotManager
 func (smgr *SnapshotManager) Prune(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()

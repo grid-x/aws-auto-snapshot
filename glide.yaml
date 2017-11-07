@@ -8,3 +8,5 @@ import:
   - service/lightsail
 - package: github.com/sirupsen/logrus
   version: ~1.0.3
+- package: gopkg.in/alecthomas/kingpin.v2
+  version: ~2.2.5

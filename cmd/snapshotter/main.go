@@ -2,39 +2,80 @@ package main
 
 import (
 	"context"
-	"flag"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/lightsail"
 	log "github.com/sirupsen/logrus"
+	"gopkg.in/alecthomas/kingpin.v2"
 
-	"github.com/grid-x/lightsail-auto-snapshot/pkg/snapshot"
+	snapec2 "github.com/grid-x/aws-auto-snapshot/pkg/snapshot/ec2"
+	snaplightsail "github.com/grid-x/aws-auto-snapshot/pkg/snapshot/lightsail"
 )
+
+// Snapshotter is the interface for snapshotable (is this even a word?!) and
+// pruneable resources, i.e. a resource we can create a snapshot for and can
+// prune the snapshot at
+type Snapshotter interface {
+	Snapshot(context.Context) error
+	Prune(context.Context) error
+}
+
+func lightsailSnapshotter(ctx context.Context, logger log.FieldLogger,
+	client *lightsail.Lightsail,
+	retention time.Duration) ([]Snapshotter, error) {
+	var result []Snapshotter
+	var token *string
+	for {
+		in := &lightsail.GetInstancesInput{}
+		if token != nil {
+			in.PageToken = token
+		}
+
+		resp, err := client.GetInstancesWithContext(ctx, in)
+		if err != nil {
+			return nil, err
+		}
+		for _, instance := range resp.Instances {
+			if instance.Name == nil {
+				//skip
+				continue
+			}
+			result = append(result, snaplightsail.NewSnapshotManager(client, *instance.Name, snaplightsail.WithRetention(retention)))
+		}
+
+		if resp.NextPageToken == nil {
+			break
+		}
+		token = resp.NextPageToken
+	}
+
+	return result, nil
+}
 
 func main() {
 
 	var (
 		logger = log.New().WithFields(log.Fields{"component": "main"})
 
-		retention       = flag.Duration("retention", 10*24*time.Hour, "Retention duration")
-		region          = flag.String("region", "eu-central-1", "AWS region to use")
-		disablePrune    = flag.Bool("disable-prune", false, "Disable pruning of old snapshots")
-		disableSnapshot = flag.Bool("disable-snapshot", false, "Disable snapshot")
+		region          = kingpin.Flag("region", "AWS region to use").Default("eu-central-1").String()
+		disablePrune    = kingpin.Flag("disable-prune", "Disable pruning of old snapshots").Default("false").Bool()
+		disableSnapshot = kingpin.Flag("disable-snapshot", "Disable snapshot").Default("false").Bool()
 
-		awsAccessKeyID     = flag.String("aws-access-key-id", "", "AWS Access Key ID to use")
-		awsSecretAccessKey = flag.String("aws-secret-access-key", "", "AWS Secret Access Key to use")
+		awsAccessKeyID     = kingpin.Flag("aws-access-key-id", "AWS Access Key ID to use").Required().String()
+		awsSecretAccessKey = kingpin.Flag("aws-secret-access-key", "AWS Secret Access Key to use").Required().String()
+
+		lightsailCmd = kingpin.Command("lightsail", "Run snapshotter for lightsail")
+		retention    = lightsailCmd.Flag("retention", "Retention duration").Default("10d").Duration()
+
+		ebsCmd          = kingpin.Command("ebs", "Run snapshotter for EBS")
+		ebsBackupTag    = ebsCmd.Flag("ebs-backup-tag", "EBS tag that needs to be set for this EBS volume to be backed up").Default("backup").String()
+		ebsRetentionTag = ebsCmd.Flag("ebs-retention-tag", "EBS tag that indicates the number of retention days").Default("retention").String()
 	)
-	flag.Parse()
-
-	if *awsAccessKeyID == "" {
-		logger.Fatal("Missing AWS Access Key ID")
-	}
-	if *awsSecretAccessKey == "" {
-		logger.Fatal("Missing AWS Secret Access Key")
-	}
+	cmd := kingpin.Parse()
 
 	creds := credentials.NewCredentials(&credentials.StaticProvider{
 		Value: credentials.Value{
@@ -46,51 +87,44 @@ func main() {
 	sess := session.New(&aws.Config{
 		Credentials: creds,
 	})
-	client := lightsail.New(sess, aws.NewConfig().WithRegion(*region))
+	cfg := aws.NewConfig().WithRegion(*region)
+	lightsailClient := lightsail.New(sess, cfg)
+	ec2Client := ec2.New(sess, cfg)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	var instances []*lightsail.Instance
-	var token *string
-	for {
-		in := &lightsail.GetInstancesInput{}
-		if token != nil {
-			in.PageToken = token
-		}
-
-		resp, err := client.GetInstancesWithContext(ctx, in)
+	var snaps []Snapshotter
+	var err error
+	switch cmd {
+	case "lightsail":
+		snaps, err = lightsailSnapshotter(ctx, logger, lightsailClient, *retention)
 		if err != nil {
 			logger.Fatal(err)
 		}
-		instances = append(instances, resp.Instances...)
-
-		if resp.NextPageToken == nil {
-			break
+	case "ebs":
+		snaps = []Snapshotter{
+			snapec2.NewSnapshotManager(
+				ec2Client,
+				snapec2.WithRetentionTag(*ebsRetentionTag),
+				snapec2.WithBackupTag(*ebsBackupTag),
+			),
 		}
-		token = resp.NextPageToken
+	default:
+		logger.Fatalf("Invalid command %q", cmd)
 	}
 
-	for _, instance := range instances {
-		if instance.Name == nil {
-			//skip
-			continue
-		}
-		logger.WithFields(log.Fields{"instance": *instance.Name}).Infof("Starting snapshot manager")
-		smgr := snapshot.NewSnapshotManager(client, *instance.Name, snapshot.WithRetention(*retention))
+	for _, s := range snaps {
 		if !*disableSnapshot {
-			if err := smgr.Snapshot(ctx); err != nil {
+			if err := s.Snapshot(ctx); err != nil {
 				logger.Error(err)
-			} else {
-				logger.WithFields(log.Fields{"instance": *instance.Name}).Infof("Snapshot successfull")
 			}
 		}
 		if !*disablePrune {
-			if err := smgr.Prune(ctx); err != nil {
+			if err := s.Prune(ctx); err != nil {
 				logger.Error(err)
-			} else {
-				logger.WithFields(log.Fields{"instance": *instance.Name}).Infof("Prune done")
 			}
 		}
 	}
+
 }

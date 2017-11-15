@@ -1,4 +1,4 @@
-GO_VERSION=1.8
+GO_VERSION=1.9
 GO_FILES=$(shell find . -type f -name "*.go")
 BIN_DIR ?= bin
 BRANCH := $(shell git branch | sed -n -e 's/^\* \(.*\)/\1/p' | sed -e 's/\//_/g')
@@ -8,10 +8,15 @@ IMAGE_URL := gridx/lightsail-auto-snapshot:${TAG}
 all: bin/snapshotter
 
 test:
-	go test -v $(glide nv)
+	go vet -v $(shell glide nv)
+	go test -v $(shell glide nv)
+
+lint:
+	golint -set_exit_status $(shell glide nv)
 
 bin:
 	mkdir -p bin
+
 clean:
 	rm -f bin/*
 
@@ -27,8 +32,15 @@ docker: bin/snapshotter.linux Dockerfile
 push: docker
 	docker push ${IMAGE_URL}
 
+ci_deps:
+	curl https://glide.sh/get | sh
+	go get -u -v github.com/golang/lint/golint
+
 ci:
-	docker run --rm -v "$$PWD:/go/src/github.com/grid-x/lightsail-auto-snapshotter" -w /go/src/github.com/grid-x/lightsail-auto-snapshotter golang:${GO_VERSION} bash -c 'make bin/snapshotter.linux'
+	docker run --rm -v "$$PWD:/go/src/github.com/grid-x/aws-auto-snapshot" -w /go/src/github.com/grid-x/aws-auto-snapshot golang:${GO_VERSION} bash -c 'make bin/snapshotter.linux'
 
 ci_test:
-	docker run --rm -v "$$PWD:/go/src/github.com/grid-x/lightsail-auto-snapshotter" -w /go/src/github.com/grid-x/lightsail-auto-snapshotter golang:${GO_VERSION} bash -c ' make test'
+	docker run --rm -v "$$PWD:/go/src/github.com/grid-x/aws-auto-snapshot" -w /go/src/github.com/grid-x/aws-auto-snapshot golang:${GO_VERSION} bash -c 'make ci_deps && make test'
+
+ci_lint:
+	docker run --rm -v "$$PWD:/go/src/github.com/grid-x/aws-auto-snapshot" -w /go/src/github.com/grid-x/aws-auto-snapshot golang:${GO_VERSION} bash -c 'make ci_deps && make lint'

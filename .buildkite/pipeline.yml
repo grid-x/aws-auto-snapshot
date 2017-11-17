@@ -1,0 +1,14 @@
+steps:
+- command: "make ci_test"
+  label: ":llama: Tests"
+  agents:
+  - "queue=default"
+- command: "make ci_lint"
+  label: ":llama: Lint"
+  agents:
+  - "queue=default"
+- "wait"
+- command: "make ci"
+  label: ":golang: Build bin/snapshotter.linux"
+  agents:
+  - "queue=default"

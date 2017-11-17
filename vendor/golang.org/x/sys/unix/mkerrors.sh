@@ -17,8 +17,8 @@ if test -z "$GOARCH" -o -z "$GOOS"; then
 fi
 
 # Check that we are using the new build system if we should
-if [[ "$GOOS" = "linux" ]] && [[ "$GOARCH" != "sparc64" ]]; then
-	if [[ "$GOLANG_SYS_BUILD" != "docker" ]]; then
+if [[ "$GOOS" -eq "linux" ]] && [[ "$GOARCH" != "sparc64" ]]; then
+	if [[ "$GOLANG_SYS_BUILD" -ne "docker" ]]; then
 		echo 1>&2 "In the new build system, mkerrors should not be called directly."
 		echo 1>&2 "See README.md"
 		exit 1
@@ -27,7 +27,7 @@ fi
 
 CC=${CC:-cc}
 
-if [[ "$GOOS" = "solaris" ]]; then
+if [[ "$GOOS" -eq "solaris" ]]; then
 	# Assumes GNU versions of utilities in PATH.
 	export PATH=/usr/gnu/bin:$PATH
 fi
@@ -84,7 +84,6 @@ includes_FreeBSD='
 #include <sys/sockio.h>
 #include <sys/sysctl.h>
 #include <sys/mman.h>
-#include <sys/mount.h>
 #include <sys/wait.h>
 #include <sys/ioctl.h>
 #include <net/bpf.h>
@@ -284,7 +283,6 @@ includes_SunOS='
 #include <sys/mman.h>
 #include <sys/wait.h>
 #include <sys/ioctl.h>
-#include <sys/mkdev.h>
 #include <net/bpf.h>
 #include <net/if.h>
 #include <net/if_arp.h>
@@ -349,7 +347,6 @@ ccflags="$@"
 		$2 !~ /^EXPR_/ &&
 		$2 ~ /^E[A-Z0-9_]+$/ ||
 		$2 ~ /^B[0-9_]+$/ ||
-		$2 ~ /^(OLD|NEW)DEV$/ ||
 		$2 == "BOTHER" ||
 		$2 ~ /^CI?BAUD(EX)?$/ ||
 		$2 == "IBSHIFT" ||

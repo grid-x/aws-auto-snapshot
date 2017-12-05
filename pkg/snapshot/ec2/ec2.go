@@ -189,7 +189,7 @@ func (smgr *SnapshotManager) Snapshot(ctx context.Context) error {
 		defer cancel()
 
 		snapshotName := fmt.Sprintf("%s-%d-%s",
-			volume.VolumeId,
+			*volume.VolumeId,
 			time.Now().UnixNano(),
 			smgr.suffix,
 		)
@@ -220,12 +220,17 @@ func (smgr *SnapshotManager) Snapshot(ctx context.Context) error {
 			}
 		}
 
+		if days == 0 {
+			days = defaultRetentionDays
+		}
+
 		deleteAfter := time.Now().Add(time.Duration(days) * 24 * time.Hour)
 
 		logger.Infof("Creating snapshot with name %s", snapshotName)
 		snapshot, err := smgr.client.CreateSnapshotWithContext(
 			ctx,
 			&ec2.CreateSnapshotInput{
+				VolumeId:    volume.VolumeId,
 				Description: aws.String(defaultDescription),
 			},
 		)
@@ -239,22 +244,34 @@ func (smgr *SnapshotManager) Snapshot(ctx context.Context) error {
 			continue
 		}
 
+		tags := []*ec2.Tag{
+			{
+				Key:   aws.String("Name"),
+				Value: aws.String(snapshotName),
+			},
+			{
+				Key:   aws.String(smgr.deleteAfterTag),
+				Value: aws.String(deleteAfter.Format(time.RFC3339)),
+			},
+		}
+
+		for _, t := range volume.Tags {
+			if t.Key != nil && *t.Key == "Name" {
+				tags = append(tags, &ec2.Tag{
+					Key:   aws.String("volume-name"),
+					Value: t.Value,
+				})
+				break
+			}
+		}
+
 		if _, err := smgr.client.CreateTagsWithContext(
 			ctx,
 			&ec2.CreateTagsInput{
 				Resources: []*string{
 					snapshot.SnapshotId,
 				},
-				Tags: []*ec2.Tag{
-					{
-						Key:   aws.String("name"),
-						Value: aws.String(snapshotName),
-					},
-					{
-						Key:   aws.String(smgr.deleteAfterTag),
-						Value: aws.String(deleteAfter.Format(time.RFC3339)),
-					},
-				},
+				Tags: tags,
 			},
 		); err != nil {
 			logger.Error(err)
@@ -273,6 +290,7 @@ func (smgr *SnapshotManager) Prune(ctx context.Context) error {
 		return err
 	}
 	for _, snap := range snaps {
+		smgr.logger.Infof("Processing snapshot %s", *snap.SnapshotId)
 		for _, tag := range snap.Tags {
 			if tag.Key == nil {
 				continue
@@ -280,7 +298,7 @@ func (smgr *SnapshotManager) Prune(ctx context.Context) error {
 			if *tag.Key == smgr.deleteAfterTag {
 				// add context to the logger
 				logger := smgr.logger.WithFields(log.Fields{
-					"snapshotID": snap.SnapshotId,
+					"snapshotID": *snap.SnapshotId,
 				})
 				if tag.Value == nil {
 					logger.Errorf("Delete after tag value is nil")
@@ -292,8 +310,8 @@ func (smgr *SnapshotManager) Prune(ctx context.Context) error {
 					logger.Error("Couldn't parse tag value for : %+v", err)
 					break
 				}
-				if deleteAfter.Before(time.Now()) {
-					// snapshot not yet scheduled for deletion
+				if time.Now().Before(deleteAfter) {
+					logger.Info("Snapshot not yet scheduled for deletion")
 					break
 				}
 				if _, err := smgr.client.DeleteSnapshotWithContext(ctx, &ec2.DeleteSnapshotInput{
@@ -301,6 +319,7 @@ func (smgr *SnapshotManager) Prune(ctx context.Context) error {
 				}); err != nil {
 					logger.Error("Couldn't delete snapshot: %+v", err)
 				}
+				logger.Info("Successfully deleted snapshot")
 			}
 		}
 	}

@@ -3,7 +3,7 @@ GO_FILES=$(shell find . -type f -name "*.go")
 BIN_DIR ?= bin
 BRANCH := $(shell git branch | sed -n -e 's/^\* \(.*\)/\1/p' | sed -e 's/\//_/g')
 TAG := ${BRANCH}-$(shell git rev-parse --short HEAD)
-IMAGE_URL := gridx/lightsail-auto-snapshot:${TAG}
+IMAGE_URL := gridx/aws-auto-snapshot:${TAG}
 
 all: bin/snapshotter
 

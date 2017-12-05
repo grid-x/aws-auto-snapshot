@@ -116,11 +116,13 @@ func main() {
 
 	for _, s := range snaps {
 		if !*disableSnapshot {
+			logger.Infof("Trying to snapshot")
 			if err := s.Snapshot(ctx); err != nil {
 				logger.Error(err)
 			}
 		}
 		if !*disablePrune {
+			logger.Infof("Trying to Prune")
 			if err := s.Prune(ctx); err != nil {
 				logger.Error(err)
 			}

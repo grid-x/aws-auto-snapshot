@@ -69,7 +69,7 @@ func main() {
 		awsSecretAccessKey = kingpin.Flag("aws-secret-access-key", "AWS Secret Access Key to use").Required().String()
 
 		lightsailCmd = kingpin.Command("lightsail", "Run snapshotter for lightsail")
-		retention    = lightsailCmd.Flag("retention", "Retention duration").Default("10d").Duration()
+		retention    = lightsailCmd.Flag("retention", "Retention duration").Default("240h").Duration()
 
 		ebsCmd          = kingpin.Command("ebs", "Run snapshotter for EBS")
 		ebsBackupTag    = ebsCmd.Flag("ebs-backup-tag", "EBS tag that needs to be set for this EBS volume to be backed up").Default("backup").String()

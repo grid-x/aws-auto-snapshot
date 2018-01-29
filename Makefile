@@ -40,7 +40,7 @@ ci:
 	docker run --rm -v "$$PWD:/go/src/github.com/grid-x/aws-auto-snapshot" -w /go/src/github.com/grid-x/aws-auto-snapshot golang:${GO_VERSION} bash -c 'make bin/snapshotter.linux'
 
 ci_test:
-	docker run --rm -v "$$PWD:/go/src/github.com/grid-x/aws-auto-snapshot" -w /go/src/github.com/grid-x/aws-auto-snapshot golang:${GO_VERSION} bash -c 'make ci_deps && make test'
+	docker run --rm -e CI=$$CI -v "$$PWD:/go/src/github.com/grid-x/aws-auto-snapshot" -w /go/src/github.com/grid-x/aws-auto-snapshot golang:${GO_VERSION} bash -c 'make ci_deps && make test'
 
 ci_lint:
 	docker run --rm -v "$$PWD:/go/src/github.com/grid-x/aws-auto-snapshot" -w /go/src/github.com/grid-x/aws-auto-snapshot golang:${GO_VERSION} bash -c 'make ci_deps && make lint'

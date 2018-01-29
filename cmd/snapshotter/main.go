@@ -7,11 +7,13 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
+	awsdynamodb "github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/lightsail"
 	log "github.com/sirupsen/logrus"
 	"gopkg.in/alecthomas/kingpin.v2"
 
+	"github.com/grid-x/aws-auto-snapshot/pkg/datastore/dynamodb"
 	snapec2 "github.com/grid-x/aws-auto-snapshot/pkg/snapshot/ec2"
 	snaplightsail "github.com/grid-x/aws-auto-snapshot/pkg/snapshot/lightsail"
 )
@@ -71,9 +73,10 @@ func main() {
 		lightsailCmd = kingpin.Command("lightsail", "Run snapshotter for lightsail")
 		retention    = lightsailCmd.Flag("retention", "Retention duration").Default("240h").Duration()
 
-		ebsCmd          = kingpin.Command("ebs", "Run snapshotter for EBS")
-		ebsBackupTag    = ebsCmd.Flag("ebs-backup-tag", "EBS tag that needs to be set for this EBS volume to be backed up").Default("backup").String()
-		ebsRetentionTag = ebsCmd.Flag("ebs-retention-tag", "EBS tag that indicates the number of retention days").Default("retention").String()
+		ebsCmd           = kingpin.Command("ebs", "Run snapshotter for EBS")
+		ebsBackupTag     = ebsCmd.Flag("ebs-backup-tag", "EBS tag that needs to be set for this EBS volume to be backed up").Default("backup").String()
+		ebsRetentionTag  = ebsCmd.Flag("ebs-retention-tag", "EBS tag that indicates the number of retention days").Default("retention").String()
+		ebsDynamodbTable = ebsCmd.Flag("dynamodb-table", "DynamoDB table to use for metadata storage").Required().String()
 	)
 	cmd := kingpin.Parse()
 
@@ -84,12 +87,12 @@ func main() {
 		},
 	})
 
-	sess := session.New(&aws.Config{
-		Credentials: creds,
-	})
-	cfg := aws.NewConfig().WithRegion(*region)
-	lightsailClient := lightsail.New(sess, cfg)
-	ec2Client := ec2.New(sess, cfg)
+	sess := session.New(aws.NewConfig().
+		WithCredentials(creds).
+		WithRegion(*region),
+	)
+	lightsailClient := lightsail.New(sess)
+	ec2Client := ec2.New(sess)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -103,9 +106,16 @@ func main() {
 			logger.Fatal(err)
 		}
 	case "ebs":
+		dydb := awsdynamodb.New(sess)
+		dynamodbDs, err := dynamodb.New(dydb, *ebsDynamodbTable)
+		if err != nil {
+			logger.Fatalf("dynamodb.New: %+v", err)
+		}
+
 		snaps = []Snapshotter{
 			snapec2.NewSnapshotManager(
 				ec2Client,
+				dynamodbDs,
 				snapec2.WithRetentionTag(*ebsRetentionTag),
 				snapec2.WithBackupTag(*ebsBackupTag),
 			),

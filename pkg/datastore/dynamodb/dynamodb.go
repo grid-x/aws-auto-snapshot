@@ -34,7 +34,10 @@ type item struct {
 }
 
 // New creates a new DynamoDB-based datastore
-func New(client *awsdynamodb.DynamoDB, table string) *DynamoDB {
+func New(client *awsdynamodb.DynamoDB, table string) (*DynamoDB, error) {
+	if client == nil {
+		return nil, fmt.Errorf("client is nil")
+	}
 	return &DynamoDB{
 		table:  table,
 		client: client,
@@ -42,11 +45,14 @@ func New(client *awsdynamodb.DynamoDB, table string) *DynamoDB {
 			"component": "datastore",
 			"datastore": "dynamodb",
 		}),
-	}
+	}, nil
 }
 
 // StoreSnapshotInfo stores the given snapshot info in the datastore
 func (d *DynamoDB) StoreSnapshotInfo(info *datastore.SnapshotInfo) error {
+	if info == nil {
+		return fmt.Errorf("info is nil")
+	}
 
 	record := &item{
 		Resource:  string(info.Resource),
@@ -119,4 +125,29 @@ func (d *DynamoDB) GetLatestSnapshotInfo(resource datastore.SnapshotResource) (*
 		CreatedAt: time.Unix(last.CreatedAt, 0),
 		Labels:    datastore.SnapshotLabels(last.Labels),
 	}, nil
+}
+
+// DeleteSnapshotInfo deletes the given info from the database
+func (d *DynamoDB) DeleteSnapshotInfo(info *datastore.SnapshotInfo) error {
+	if info == nil {
+		return fmt.Errorf("info is nil")
+	}
+	logger := d.logger.WithFields(log.Fields{
+		"resource":    string(info.Resource),
+		"snapshot-id": string(info.ID),
+	})
+	logger.Info("Trying to delete snapshot info...")
+
+	_, err := d.client.DeleteItem(&awsdynamodb.DeleteItemInput{
+		TableName: aws.String(d.table),
+		Key: map[string]*awsdynamodb.AttributeValue{
+			"snapshot_resource": &awsdynamodb.AttributeValue{
+				S: aws.String(string(info.Resource)),
+			},
+			"created_at": &awsdynamodb.AttributeValue{
+				N: aws.String(strconv.FormatInt(info.CreatedAt.Unix(), 10)),
+			},
+		},
+	})
+	return err
 }

@@ -27,4 +27,5 @@ type SnapshotInfo struct {
 type Datastore interface {
 	StoreSnapshotInfo(*SnapshotInfo) error
 	GetLatestSnapshotInfo(SnapshotResource) (*SnapshotInfo, error)
+	DeleteSnapshotInfo(*SnapshotInfo) error
 }

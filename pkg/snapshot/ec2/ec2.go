@@ -10,6 +10,8 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	log "github.com/sirupsen/logrus"
+
+	"github.com/grid-x/aws-auto-snapshot/pkg/datastore"
 )
 
 const (
@@ -35,6 +37,8 @@ type SnapshotManager struct {
 	deleteAfterTag string
 
 	logger log.FieldLogger
+
+	datastore datastore.Datastore
 }
 
 // Opt is the type for Options of the SnapshotManager
@@ -71,7 +75,7 @@ func WithDeleteAfterTag(tag string) Opt {
 
 // NewSnapshotManager creates a new SnapshotManager given an EC2 client and a
 // set of Opts
-func NewSnapshotManager(client *ec2.EC2, opts ...Opt) *SnapshotManager {
+func NewSnapshotManager(client *ec2.EC2, datastore datastore.Datastore, opts ...Opt) *SnapshotManager {
 	smgr := &SnapshotManager{
 		client: client,
 
@@ -83,7 +87,9 @@ func NewSnapshotManager(client *ec2.EC2, opts ...Opt) *SnapshotManager {
 		logger: log.New().WithFields(
 			log.Fields{
 				"component": "ec2-snapshot-manager",
-			}),
+			},
+		),
+		datastore: datastore,
 	}
 
 	for _, o := range opts {
@@ -224,7 +230,8 @@ func (smgr *SnapshotManager) Snapshot(ctx context.Context) error {
 			days = defaultRetentionDays
 		}
 
-		deleteAfter := time.Now().Add(time.Duration(days) * 24 * time.Hour)
+		created := time.Now()
+		deleteAfter := created.Add(time.Duration(days) * 24 * time.Hour)
 
 		logger.Infof("Creating snapshot with name %s", snapshotName)
 		snapshot, err := smgr.client.CreateSnapshotWithContext(
@@ -277,6 +284,19 @@ func (smgr *SnapshotManager) Snapshot(ctx context.Context) error {
 			logger.Error(err)
 			continue
 		}
+
+		if err := smgr.datastore.StoreSnapshotInfo(&datastore.SnapshotInfo{
+			Resource: datastore.SnapshotResource(*volume.VolumeId),
+			ID:       datastore.SnapshotID(*snapshot.SnapshotId),
+			// The createdAt timestamp is used as a key for ordering
+			// in the datatstore. Hence we need to ensure it is
+			// stable. To avoid problems let's truncate it to one
+			// minute
+			CreatedAt: (*snapshot.StartTime).Truncate(time.Minute),
+		}); err != nil {
+			logger.Error(err)
+			continue
+		}
 	}
 	return nil
 }
@@ -321,6 +341,18 @@ func (smgr *SnapshotManager) Prune(ctx context.Context) error {
 				}
 				logger.Info("Successfully deleted snapshot")
 			}
+		}
+		if err := smgr.datastore.DeleteSnapshotInfo(&datastore.SnapshotInfo{
+			Resource: datastore.SnapshotResource(*snap.VolumeId),
+			ID:       datastore.SnapshotID(*snap.SnapshotId),
+			// The createdAt timestamp is used as a key for ordering
+			// in the datatstore. Hence we need to ensure it is
+			// stable. To avoid problems it was truncated to one
+			// minute during creation above
+			CreatedAt: (*snap.StartTime).Truncate(time.Minute),
+		}); err != nil {
+			smgr.logger.Error(err)
+			continue
 		}
 	}
 

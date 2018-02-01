@@ -338,21 +338,22 @@ func (smgr *SnapshotManager) Prune(ctx context.Context) error {
 					SnapshotId: snap.SnapshotId,
 				}); err != nil {
 					logger.Error("Couldn't delete snapshot: %+v", err)
+					break
 				}
 				logger.Info("Successfully deleted snapshot")
+				if err := smgr.datastore.DeleteSnapshotInfo(&datastore.SnapshotInfo{
+					Resource: datastore.SnapshotResource(*snap.VolumeId),
+					ID:       datastore.SnapshotID(*snap.SnapshotId),
+					// The createdAt timestamp is used as a key for ordering
+					// in the datatstore. Hence we need to ensure it is
+					// stable. To avoid problems it was truncated to one
+					// minute during creation above
+					CreatedAt: (*snap.StartTime).Truncate(time.Minute),
+				}); err != nil {
+					smgr.logger.Error(err)
+				}
+				break
 			}
-		}
-		if err := smgr.datastore.DeleteSnapshotInfo(&datastore.SnapshotInfo{
-			Resource: datastore.SnapshotResource(*snap.VolumeId),
-			ID:       datastore.SnapshotID(*snap.SnapshotId),
-			// The createdAt timestamp is used as a key for ordering
-			// in the datatstore. Hence we need to ensure it is
-			// stable. To avoid problems it was truncated to one
-			// minute during creation above
-			CreatedAt: (*snap.StartTime).Truncate(time.Minute),
-		}); err != nil {
-			smgr.logger.Error(err)
-			continue
 		}
 	}
 

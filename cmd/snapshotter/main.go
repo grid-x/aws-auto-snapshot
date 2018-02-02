@@ -10,12 +10,21 @@ import (
 	awsdynamodb "github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/lightsail"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/push"
 	log "github.com/sirupsen/logrus"
 	"gopkg.in/alecthomas/kingpin.v2"
 
 	"github.com/grid-x/aws-auto-snapshot/pkg/datastore/dynamodb"
 	snapec2 "github.com/grid-x/aws-auto-snapshot/pkg/snapshot/ec2"
 	snaplightsail "github.com/grid-x/aws-auto-snapshot/pkg/snapshot/lightsail"
+)
+
+var (
+	completionTime = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "aws_auto_snapshot_last_completion_timestamp_seconds",
+		Help: "The timestamp of the last successful completion of a aws auto snapshotter run",
+	})
 )
 
 // Snapshotter is the interface for snapshotable (is this even a word?!) and
@@ -66,6 +75,8 @@ func main() {
 		region          = kingpin.Flag("region", "AWS region to use").Default("eu-central-1").String()
 		disablePrune    = kingpin.Flag("disable-prune", "Disable pruning of old snapshots").Default("false").Bool()
 		disableSnapshot = kingpin.Flag("disable-snapshot", "Disable snapshot").Default("false").Bool()
+
+		pushgatewayURL = kingpin.Flag("pushgateway-url", "URL of Prometheus' pushgateway").String()
 
 		awsAccessKeyID     = kingpin.Flag("aws-access-key-id", "AWS Access Key ID to use").Required().String()
 		awsSecretAccessKey = kingpin.Flag("aws-secret-access-key", "AWS Secret Access Key to use").Required().String()
@@ -136,6 +147,18 @@ func main() {
 			if err := s.Prune(ctx); err != nil {
 				logger.Error(err)
 			}
+		}
+	}
+
+	if *pushgatewayURL != "" {
+		completionTime.SetToCurrentTime()
+		if err := push.AddFromGatherer(
+			"aws_auto_snapshot",
+			push.HostnameGroupingKey(),
+			*pushgatewayURL,
+			prometheus.DefaultGatherer,
+		); err != nil {
+			logger.Errorf("cannot push metrics to pushgateway at %s: %+v", *pushgatewayURL, err)
 		}
 	}
 

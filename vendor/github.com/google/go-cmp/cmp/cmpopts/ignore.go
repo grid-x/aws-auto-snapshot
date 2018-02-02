@@ -50,7 +50,7 @@ func (tf typeFilter) filter(p cmp.Path) bool {
 	if len(p) < 1 {
 		return false
 	}
-	t := p.Last().Type()
+	t := p[len(p)-1].Type()
 	for _, ti := range tf {
 		if t.AssignableTo(ti) {
 			return true
@@ -95,7 +95,7 @@ func (tf ifaceFilter) filter(p cmp.Path) bool {
 	if len(p) < 1 {
 		return false
 	}
-	t := p.Last().Type()
+	t := p[len(p)-1].Type()
 	for _, ti := range tf {
 		if t.AssignableTo(ti) {
 			return true
@@ -131,11 +131,14 @@ func newUnexportedFilter(typs ...interface{}) unexportedFilter {
 	return ux
 }
 func (xf unexportedFilter) filter(p cmp.Path) bool {
-	sf, ok := p.Index(-1).(cmp.StructField)
+	if len(p) < 2 {
+		return false
+	}
+	sf, ok := p[len(p)-1].(cmp.StructField)
 	if !ok {
 		return false
 	}
-	return xf.m[p.Index(-2).Type()] && !isExported(sf.Name())
+	return xf.m[p[len(p)-2].Type()] && !isExported(sf.Name())
 }
 
 // isExported reports whether the identifier is exported.

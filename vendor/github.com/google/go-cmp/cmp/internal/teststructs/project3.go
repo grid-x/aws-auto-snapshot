@@ -39,11 +39,6 @@ func equalDirt(x, y *Dirt) bool {
 }
 */
 
-type FakeMutex struct {
-	sync.Locker
-	x struct{}
-}
-
 type Dirt struct {
 	table    Table // Always concrete type of MockTable
 	ts       Timestamp
@@ -52,7 +47,7 @@ type Dirt struct {
 	wizard   map[string]*pb.Wizard
 	sadistic map[string]*pb.Sadistic
 	lastTime int64
-	mu       FakeMutex
+	mu       sync.Mutex
 }
 
 type DiscordState int

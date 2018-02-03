@@ -8,10 +8,14 @@ package value
 import (
 	"fmt"
 	"reflect"
-	"strconv"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 )
+
+// formatFakePointers controls whether to substitute pointer addresses with nil.
+// This is used for deterministic testing.
+var formatFakePointers = false
 
 var stringerIface = reflect.TypeOf((*fmt.Stringer)(nil)).Elem()
 
@@ -22,35 +26,28 @@ var stringerIface = reflect.TypeOf((*fmt.Stringer)(nil)).Elem()
 //	* Avoids printing struct fields that are zero
 //	* Prints a nil-slice as being nil, not empty
 //	* Prints map entries in deterministic order
-func Format(v reflect.Value, conf FormatConfig) string {
-	conf.printType = true
-	conf.followPointers = true
-	conf.realPointers = true
-	return formatAny(v, conf, nil)
+func Format(v reflect.Value, useStringer bool) string {
+	return formatAny(v, formatConfig{useStringer, true, true, !formatFakePointers}, nil)
 }
 
-type FormatConfig struct {
-	UseStringer        bool // Should the String method be used if available?
-	printType          bool // Should we print the type before the value?
-	PrintPrimitiveType bool // Should we print the type of primitives?
-	followPointers     bool // Should we recursively follow pointers?
-	realPointers       bool // Should we print the real address of pointers?
+type formatConfig struct {
+	useStringer    bool // Should the String method be used if available?
+	printType      bool // Should we print the type before the value?
+	followPointers bool // Should we recursively follow pointers?
+	realPointers   bool // Should we print the real address of pointers?
 }
 
-func formatAny(v reflect.Value, conf FormatConfig, visited map[uintptr]bool) string {
+func formatAny(v reflect.Value, conf formatConfig, visited map[uintptr]bool) string {
 	// TODO: Should this be a multi-line printout in certain situations?
 
 	if !v.IsValid() {
 		return "<non-existent>"
 	}
-	if conf.UseStringer && v.Type().Implements(stringerIface) && v.CanInterface() {
+	if conf.useStringer && v.Type().Implements(stringerIface) && v.CanInterface() {
 		if (v.Kind() == reflect.Ptr || v.Kind() == reflect.Interface) && v.IsNil() {
 			return "<nil>"
 		}
-
-		const stringerPrefix = "s" // Indicates that the String method was used
-		s := v.Interface().(fmt.Stringer).String()
-		return stringerPrefix + formatString(s)
+		return fmt.Sprintf("%q", v.Interface().(fmt.Stringer).String())
 	}
 
 	switch v.Kind() {
@@ -69,7 +66,7 @@ func formatAny(v reflect.Value, conf FormatConfig, visited map[uintptr]bool) str
 	case reflect.Complex64, reflect.Complex128:
 		return formatPrimitive(v.Type(), v.Complex(), conf)
 	case reflect.String:
-		return formatPrimitive(v.Type(), formatString(v.String()), conf)
+		return formatPrimitive(v.Type(), fmt.Sprintf("%q", v), conf)
 	case reflect.UnsafePointer, reflect.Chan, reflect.Func:
 		return formatPointer(v, conf)
 	case reflect.Ptr:
@@ -130,13 +127,11 @@ func formatAny(v reflect.Value, conf FormatConfig, visited map[uintptr]bool) str
 		visited = insertPointer(visited, v.Pointer())
 
 		var ss []string
-		keyConf, valConf := conf, conf
-		keyConf.printType = v.Type().Key().Kind() == reflect.Interface
-		keyConf.followPointers = false
-		valConf.printType = v.Type().Elem().Kind() == reflect.Interface
+		subConf := conf
+		subConf.printType = v.Type().Elem().Kind() == reflect.Interface
 		for _, k := range SortKeys(v.MapKeys()) {
-			sk := formatAny(k, keyConf, visited)
-			sv := formatAny(v.MapIndex(k), valConf, visited)
+			sk := formatAny(k, formatConfig{realPointers: conf.realPointers}, visited)
+			sv := formatAny(v.MapIndex(k), subConf, visited)
 			ss = append(ss, fmt.Sprintf("%s: %s", sk, sv))
 		}
 		s := fmt.Sprintf("{%s}", strings.Join(ss, ", "))
@@ -154,7 +149,7 @@ func formatAny(v reflect.Value, conf FormatConfig, visited map[uintptr]bool) str
 				continue // Elide zero value fields
 			}
 			name := v.Type().Field(i).Name
-			subConf.UseStringer = conf.UseStringer
+			subConf.useStringer = conf.useStringer && isExported(name)
 			s := formatAny(vv, subConf, visited)
 			ss = append(ss, fmt.Sprintf("%s: %s", name, s))
 		}
@@ -168,33 +163,14 @@ func formatAny(v reflect.Value, conf FormatConfig, visited map[uintptr]bool) str
 	}
 }
 
-func formatString(s string) string {
-	// Use quoted string if it the same length as a raw string literal.
-	// Otherwise, attempt to use the raw string form.
-	qs := strconv.Quote(s)
-	if len(qs) == 1+len(s)+1 {
-		return qs
-	}
-
-	// Disallow newlines to ensure output is a single line.
-	// Only allow printable runes for readability purposes.
-	rawInvalid := func(r rune) bool {
-		return r == '`' || r == '\n' || !unicode.IsPrint(r)
-	}
-	if strings.IndexFunc(s, rawInvalid) < 0 {
-		return "`" + s + "`"
-	}
-	return qs
-}
-
-func formatPrimitive(t reflect.Type, v interface{}, conf FormatConfig) string {
-	if conf.printType && (conf.PrintPrimitiveType || t.PkgPath() != "") {
+func formatPrimitive(t reflect.Type, v interface{}, conf formatConfig) string {
+	if conf.printType && t.PkgPath() != "" {
 		return fmt.Sprintf("%v(%v)", t, v)
 	}
 	return fmt.Sprintf("%v", v)
 }
 
-func formatPointer(v reflect.Value, conf FormatConfig) string {
+func formatPointer(v reflect.Value, conf formatConfig) string {
 	p := v.Pointer()
 	if !conf.realPointers {
 		p = 0 // For deterministic printing purposes
@@ -274,4 +250,10 @@ func isZero(v reflect.Value) bool {
 		return true
 	}
 	return false
+}
+
+// isExported reports whether the identifier is exported.
+func isExported(id string) bool {
+	r, _ := utf8.DecodeRuneInString(id)
+	return unicode.IsUpper(r)
 }

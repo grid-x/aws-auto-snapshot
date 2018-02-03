@@ -9,6 +9,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/ec2"
+	"github.com/prometheus/client_golang/prometheus"
 	log "github.com/sirupsen/logrus"
 
 	"github.com/grid-x/aws-auto-snapshot/pkg/datastore"
@@ -24,6 +25,37 @@ const (
 	defaultRetentionDays = 7 // Default are 7 days retention
 	defaultDescription   = "auto snapshot created by grid-x/aws-auto-snapshot"
 )
+
+var (
+	describeVolumesRequets = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "ec2_describe_volumes_requests_total",
+		Help: "Total number of describe volumes requests",
+	})
+	describeSnapshotsRequests = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "ec2_describe_snapshots_requests_total",
+		Help: "Total number of describe snapshots requests",
+	})
+	createSnapshotRequests = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "ec2_create_snapshot_requests_total",
+		Help: "Total number of create snapshot requests",
+	})
+	createTagsRequests = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "ec2_create_tags_requests_total",
+		Help: "Total number of create tags requests",
+	})
+	deleteSnapshotRequests = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "ec2_delete_snapshot_requests_total",
+		Help: "Total number of delete snapshot requests",
+	})
+)
+
+func init() {
+	prometheus.MustRegister(describeVolumesRequets)
+	prometheus.MustRegister(describeSnapshotsRequests)
+	prometheus.MustRegister(createSnapshotRequests)
+	prometheus.MustRegister(createTagsRequests)
+	prometheus.MustRegister(deleteSnapshotRequests)
+}
 
 // SnapshotManager manages the snapshot creation and pruning of EC2 EBS-based
 // snapshots
@@ -120,6 +152,7 @@ func (smgr *SnapshotManager) fetchVolumes(ctx context.Context) ([]*ec2.Volume, e
 		})
 
 		resp, err := smgr.client.DescribeVolumesWithContext(ctx, in)
+		describeVolumesRequets.Inc()
 		if err != nil {
 			return nil, err
 		}
@@ -160,6 +193,7 @@ func (smgr *SnapshotManager) fetchSnapshots(ctx context.Context) ([]*ec2.Snapsho
 		})
 
 		resp, err := smgr.client.DescribeSnapshotsWithContext(ctx, in)
+		describeSnapshotsRequests.Inc()
 		if err != nil {
 			return nil, err
 		}
@@ -241,6 +275,7 @@ func (smgr *SnapshotManager) Snapshot(ctx context.Context) error {
 				Description: aws.String(defaultDescription),
 			},
 		)
+		createSnapshotRequests.Inc()
 		if err != nil {
 			logger.Error(err)
 			continue
@@ -284,6 +319,7 @@ func (smgr *SnapshotManager) Snapshot(ctx context.Context) error {
 			logger.Error(err)
 			continue
 		}
+		createTagsRequests.Inc()
 
 		if err := smgr.datastore.StoreSnapshotInfo(&datastore.SnapshotInfo{
 			Resource: datastore.SnapshotResource(*volume.VolumeId),
@@ -340,6 +376,7 @@ func (smgr *SnapshotManager) Prune(ctx context.Context) error {
 					logger.Error("Couldn't delete snapshot: %+v", err)
 					break
 				}
+				deleteSnapshotRequests.Inc()
 				logger.Info("Successfully deleted snapshot")
 				if err := smgr.datastore.DeleteSnapshotInfo(&datastore.SnapshotInfo{
 					Resource: datastore.SnapshotResource(*snap.VolumeId),

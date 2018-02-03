@@ -8,6 +8,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	awsdynamodb "github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
+	"github.com/prometheus/client_golang/prometheus"
 	log "github.com/sirupsen/logrus"
 
 	"github.com/grid-x/aws-auto-snapshot/pkg/datastore"
@@ -17,6 +18,27 @@ const (
 	primaryKey = "snapshot_resource"
 	rangeKey   = "created_at"
 )
+
+var (
+	putItemsSent = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "dynamodb_item_puts_total",
+		Help: "Total number of item puts to dynamodb",
+	})
+	queriesSent = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "dynamodb_queries_total",
+		Help: "Total number of queries sent to dynamodb",
+	})
+	deletesSent = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "dynamodb_deletes_total",
+		Help: "Total number of delete items sent to dynamodb",
+	})
+)
+
+func init() {
+	prometheus.MustRegister(putItemsSent)
+	prometheus.MustRegister(queriesSent)
+	prometheus.MustRegister(deletesSent)
+}
 
 // DynamoDB represents a datastore that uses dynamodb under the hood
 type DynamoDB struct {
@@ -76,6 +98,7 @@ func (d *DynamoDB) StoreSnapshotInfo(info *datastore.SnapshotInfo) error {
 		TableName: aws.String(d.table),
 		Item:      av,
 	})
+	putItemsSent.Inc()
 	if err != nil {
 		return err
 	}
@@ -103,6 +126,7 @@ func (d *DynamoDB) GetLatestSnapshotInfo(resource datastore.SnapshotResource) (*
 			},
 		},
 	})
+	queriesSent.Inc()
 	if err != nil {
 		return nil, err
 	}
@@ -149,5 +173,6 @@ func (d *DynamoDB) DeleteSnapshotInfo(info *datastore.SnapshotInfo) error {
 			},
 		},
 	})
+	deletesSent.Inc()
 	return err
 }

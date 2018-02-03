@@ -8,6 +8,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/lightsail"
+	"github.com/prometheus/client_golang/prometheus"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -17,7 +18,26 @@ const (
 
 var (
 	defaultRetention = 10 * 24 * time.Hour
+
+	createInstanceSnapshotRequest = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "lightsail_create_instance_snapshot_requests_total",
+		Help: "Total number of create instance snapshot requests",
+	})
+	getInstanceSnapshotRequest = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "lightsail_get_instance_snapshot_requests_total",
+		Help: "Total number of get instance snapshot requests",
+	})
+	deleteInstanceSnapshotRequest = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "lightsail_delete_instance_snapshot_requests_total",
+		Help: "Total number of delete instance snapshot requests",
+	})
 )
+
+func init() {
+	prometheus.MustRegister(createInstanceSnapshotRequest)
+	prometheus.MustRegister(getInstanceSnapshotRequest)
+	prometheus.MustRegister(deleteInstanceSnapshotRequest)
+}
 
 // SnapshotManager manages the snapshots of a single lightsail instance
 type SnapshotManager struct {
@@ -91,6 +111,7 @@ func (smgr *SnapshotManager) Snapshot(ctx context.Context) error {
 			InstanceSnapshotName: aws.String(snapshotName),
 		},
 	)
+	createInstanceSnapshotRequest.Inc()
 	return err
 }
 
@@ -112,6 +133,7 @@ func (smgr *SnapshotManager) Prune(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
+		getInstanceSnapshotRequest.Inc()
 
 		for _, snapshot := range resp.InstanceSnapshots {
 
@@ -153,6 +175,7 @@ func (smgr *SnapshotManager) Prune(ctx context.Context) error {
 		if err != nil {
 			smgr.logger.Error(err)
 		}
+		deleteInstanceSnapshotRequest.Inc()
 	}
 
 	return nil

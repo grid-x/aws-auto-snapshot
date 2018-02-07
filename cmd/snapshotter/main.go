@@ -154,7 +154,7 @@ func main() {
 		completionTime.SetToCurrentTime()
 		if err := push.AddFromGatherer(
 			"aws_auto_snapshot",
-			push.HostnameGroupingKey(),
+			nil,
 			*pushgatewayURL,
 			prometheus.DefaultGatherer,
 		); err != nil {

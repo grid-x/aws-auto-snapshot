@@ -140,9 +140,8 @@ func (d *DynamoDB) GetLatestSnapshotInfo(resource datastore.SnapshotResource) (*
 		return nil, fmt.Errorf("No items found")
 	}
 
-	logger.Info("found latest snapshot info...")
-
 	last := items[len(items)-1]
+	logger.Infof("found latest snapshot info... %+v ", last)
 	return &datastore.SnapshotInfo{
 		Resource:  datastore.SnapshotResource(last.Resource),
 		ID:        datastore.SnapshotID(last.ID),

@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/service/ec2"
+	awsec2 "github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/prometheus/client_golang/prometheus"
 	log "github.com/sirupsen/logrus"
 
@@ -60,7 +60,7 @@ func init() {
 // SnapshotManager manages the snapshot creation and pruning of EC2 EBS-based
 // snapshots
 type SnapshotManager struct {
-	client   *ec2.EC2
+	client   *awsec2.EC2
 	volumeID string
 
 	suffix         string // snapshot suffix
@@ -107,7 +107,7 @@ func WithDeleteAfterTag(tag string) Opt {
 
 // NewSnapshotManager creates a new SnapshotManager given an EC2 client and a
 // set of Opts
-func NewSnapshotManager(client *ec2.EC2, datastore datastore.Datastore, opts ...Opt) *SnapshotManager {
+func NewSnapshotManager(client *awsec2.EC2, datastore datastore.Datastore, opts ...Opt) *SnapshotManager {
 	smgr := &SnapshotManager{
 		client: client,
 
@@ -131,17 +131,17 @@ func NewSnapshotManager(client *ec2.EC2, datastore datastore.Datastore, opts ...
 	return smgr
 }
 
-func (smgr *SnapshotManager) fetchVolumes(ctx context.Context) ([]*ec2.Volume, error) {
-	var result []*ec2.Volume
+func (smgr *SnapshotManager) fetchVolumes(ctx context.Context) ([]*awsec2.Volume, error) {
+	var result []*awsec2.Volume
 	var token *string
 	for {
-		in := &ec2.DescribeVolumesInput{}
+		in := &awsec2.DescribeVolumesInput{}
 		if token != nil {
 			in.NextToken = token
 		}
 
 		// Filter so we get only volumes that have the Backup tag set
-		in.SetFilters([]*ec2.Filter{
+		in.SetFilters([]*awsec2.Filter{
 			{
 				Name: aws.String("tag-key"),
 				Values: []*string{
@@ -173,17 +173,17 @@ func (smgr *SnapshotManager) fetchVolumes(ctx context.Context) ([]*ec2.Volume, e
 	return result, nil
 }
 
-func (smgr *SnapshotManager) fetchSnapshots(ctx context.Context) ([]*ec2.Snapshot, error) {
-	var result []*ec2.Snapshot
+func (smgr *SnapshotManager) fetchSnapshots(ctx context.Context) ([]*awsec2.Snapshot, error) {
+	var result []*awsec2.Snapshot
 	var token *string
 	for {
-		in := &ec2.DescribeSnapshotsInput{}
+		in := &awsec2.DescribeSnapshotsInput{}
 		if token != nil {
 			in.NextToken = token
 		}
 
 		// Filter so we get only volumes that have the Backup tag set
-		in.SetFilters([]*ec2.Filter{
+		in.SetFilters([]*awsec2.Filter{
 			{
 				Name: aws.String("tag-key"),
 				Values: []*string{
@@ -270,7 +270,7 @@ func (smgr *SnapshotManager) Snapshot(ctx context.Context) error {
 		logger.Infof("Creating snapshot with name %s", snapshotName)
 		snapshot, err := smgr.client.CreateSnapshotWithContext(
 			ctx,
-			&ec2.CreateSnapshotInput{
+			&awsec2.CreateSnapshotInput{
 				VolumeId:    volume.VolumeId,
 				Description: aws.String(defaultDescription),
 			},
@@ -286,7 +286,7 @@ func (smgr *SnapshotManager) Snapshot(ctx context.Context) error {
 			continue
 		}
 
-		tags := []*ec2.Tag{
+		tags := []*awsec2.Tag{
 			{
 				Key:   aws.String("Name"),
 				Value: aws.String(snapshotName),
@@ -299,7 +299,7 @@ func (smgr *SnapshotManager) Snapshot(ctx context.Context) error {
 
 		for _, t := range volume.Tags {
 			if t.Key != nil && *t.Key == "Name" {
-				tags = append(tags, &ec2.Tag{
+				tags = append(tags, &awsec2.Tag{
 					Key:   aws.String("volume-name"),
 					Value: t.Value,
 				})
@@ -309,7 +309,7 @@ func (smgr *SnapshotManager) Snapshot(ctx context.Context) error {
 
 		if _, err := smgr.client.CreateTagsWithContext(
 			ctx,
-			&ec2.CreateTagsInput{
+			&awsec2.CreateTagsInput{
 				Resources: []*string{
 					snapshot.SnapshotId,
 				},
@@ -370,7 +370,7 @@ func (smgr *SnapshotManager) Prune(ctx context.Context) error {
 					logger.Info("Snapshot not yet scheduled for deletion")
 					break
 				}
-				if _, err := smgr.client.DeleteSnapshotWithContext(ctx, &ec2.DeleteSnapshotInput{
+				if _, err := smgr.client.DeleteSnapshotWithContext(ctx, &awsec2.DeleteSnapshotInput{
 					SnapshotId: snap.SnapshotId,
 				}); err != nil {
 					logger.Error("Couldn't delete snapshot: %+v", err)

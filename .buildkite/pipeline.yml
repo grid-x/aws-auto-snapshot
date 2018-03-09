@@ -8,7 +8,7 @@ steps:
   agents:
   - "queue=default"
 - "wait"
-- command: "make ci"
+- command: "make ci_build"
   label: ":golang: Build bin/snapshotter.linux"
   agents:
   - "queue=default"

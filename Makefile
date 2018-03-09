@@ -1,5 +1,10 @@
-GO_VERSION=1.9
-GO_FILES=$(shell find . -type f -name "*.go")
+GO_FILES := $(shell find . -type f -name "*.go")
+GO_BUILD := CGO_ENABLED=0 go build -ldflags="-w -s"
+GO_TOOLS := gridx/golang-tools:master-839443d
+GO_PROJECT := github.com/grid-x/aws-auto-snapshot
+DOCKER_RUN := docker run -e CI=$${CI} -it ${DOCKER_LINK} --rm -v $$PWD:/go/src/${GO_PROJECT} -w /go/src/${GO_PROJECT}
+GO_RUN := ${DOCKER_RUN} ${GO_TOOLS} bash -c
+
 BIN_DIR ?= bin
 BRANCH := $(shell git branch | sed -n -e 's/^\* \(.*\)/\1/p' | sed -e 's/\//_/g')
 TAG := ${BRANCH}-$(shell git rev-parse --short HEAD)
@@ -21,10 +26,10 @@ clean:
 	rm -f bin/*
 
 bin/snapshotter: ${GO_FILES} bin
-	go build -o $@ ./cmd/snapshotter
+	${GO_BUILD} -o $@ ./cmd/snapshotter
 
 bin/snapshotter.linux: ${GO_FILES}
-	GOOS=linux CGO_ENABLED=0 go build -o $@ ./cmd/snapshotter
+	GOOS=linux CGO_ENABLED=0 ${GO_BUILD} -o $@ ./cmd/snapshotter
 
 docker: bin/snapshotter.linux Dockerfile
 	docker build -t ${IMAGE_URL} -f Dockerfile .
@@ -32,15 +37,11 @@ docker: bin/snapshotter.linux Dockerfile
 push: docker
 	docker push ${IMAGE_URL}
 
-ci_deps:
-	curl https://glide.sh/get | sh
-	go get -u -v github.com/golang/lint/golint
-
-ci:
-	docker run --rm -v "$$PWD:/go/src/github.com/grid-x/aws-auto-snapshot" -w /go/src/github.com/grid-x/aws-auto-snapshot golang:${GO_VERSION} bash -c 'make bin/snapshotter.linux'
+ci_build:
+	${GO_RUN} "make bin/snapshotter.linux"
 
 ci_test:
-	docker run --rm -e CI=$$CI -v "$$PWD:/go/src/github.com/grid-x/aws-auto-snapshot" -w /go/src/github.com/grid-x/aws-auto-snapshot golang:${GO_VERSION} bash -c 'make ci_deps && make test'
+	${GO_RUN} "make test"
 
 ci_lint:
-	docker run --rm -v "$$PWD:/go/src/github.com/grid-x/aws-auto-snapshot" -w /go/src/github.com/grid-x/aws-auto-snapshot golang:${GO_VERSION} bash -c 'make ci_deps && make lint'
+	${GO_RUN} "make lint"

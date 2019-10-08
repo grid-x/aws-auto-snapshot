@@ -1,5 +1,10 @@
 # aws-auto-snapshot
 
+NOTE: As of October 2019 [AWS Lightsail supports automatic snapshots](https://aws.amazon.com/about-aws/whats-new/2019/10/amazon-lightsail-now-provides-automatic-snapshots/) with a seven 
+day retention period. It is recommended to use the lightsail version instead of 
+this tool if possible. Details can be found 
+[here](https://lightsail.aws.amazon.com/ls/docs/en_us/articles/amazon-lightsail-configuring-automatic-snapshots).
+
 aws-auto-snapshot is a set of tools that help to create snapshots for
 
 * EBS volumes
